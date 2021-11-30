@@ -26,81 +26,28 @@ The following data set is looking at school shootings in the US from 1990 to pre
 The goal of the analysis is to get a better understanding of the victims / suspects that are involved in school shootings. Some questions to ask, 
 
 # Data Prep
+This dataset provided us a lot of valuable information with two csv files. 
 
-# Quiz Grade Analysis
+The csv file named “cps_01_formatted”shows Census numbers on elementary school, high school and college populations through 2016. (2017 and 2018 are extrapolated.)The X Column shows  the number of population with specific types of schools (N is Nursery School, K is Kindergarten, E is Elementary School, H is High School and C is College). The Y column shows the yearly total population with one type of school.
 
-The following report looks at the performance of 30 students over 4 quizzes. The grades data is simulated using random numbers for normal distributions.
-
-## Grades Dataset 
-
-The following data frame captures the grades of 30 students.
-
-```{r echo=TRUE}
-library(plotly)
-
-set.seed(123)
-
-data <- data.frame(
-  Quiz1 = round(rnorm(30, 60, 5)),
-  Quiz2 = round(rnorm(30, 70, 2)),
-  Quiz3 = round(rnorm(30, 80, 5)),
-  Quiz4 = round(rnorm(30, 75, 10))
-  )
-
-data$Average_Quizzes <- round(
-  (data$Quiz1 + data$Quiz2 + data$Quiz3 + data$Quiz4) / 4.0)
-
-data <- data[order(data$Average_Quizzes, decreasing = T), ]
-
-grades <- data$Average_Quizzes
-
-x <- list(
-  title = "Student"
-)
-y <- list(
-  title = "Score"
-)
-
-n = length(grades)
-
-p <- plot_ly(x = 1:n, y = grades, name = 'Quizzes', type = 'bar') %>%
-  layout(title="Average Quiz Scores", xaxis = x, yaxis = y)
-p
-```
+Another file named “pah_wikp_combo” provides the dataset of the Pah/Amaral/Hagan research on school shootings from 1990. Y column indicates the date with specific month,date and year. Date means date of total incident,City means location of incident,State means  location of incident, Area Type: urban or suburban (only in Pah dataset). For data type named School, C is college, HS is high school, MS is middle school, ES is elementary school, - = unknown. The data type named Fatalities indicate the number of killed. Wounded means wounded (only in Wikipedia dataset). Dupe shows whether this incident appears in both datasets. Note means only the "Pah '' version of the incident is marked. Source shows the source either from Pah or Wikp. Desc: text description of incident (only in Wikipedia dataset)
 
 
-## Summary of Quiz scores
 
-```{r echo = TRUE}
-
-options(digits=2)
-sum_data <- data.frame(
-  AvgQuiz = as.vector(summary(data$Average_Quizzes)),
-  Quiz1 = as.vector(summary(data$Quiz1)),
-  Quiz2 = as.vector(summary(data$Quiz2)),
-  Quiz3 = as.vector(summary(data$Quiz3)),
-  Quiz4 = as.vector(summary(data$Quiz4))
-)
-
-rownames(sum_data) <- c("Min", "Q1", "Q2", "Mean", "Q3", "Max")
-sum_data
-
-```
+# General Analysis of dataset on school shooting from 选个时间 to 选个时间
+School shooting by city
+School shooting by state
+School shooting by school type
+School shooting by Fatalities
+School shooting by areatype
 
 
-# Box plot analysis
+# Distribution of Data
 
-```{r echo = TRUE}
 
-plot_ly(data, y = ~Average_Quizzes, type="box", name = 'Avg_Quiz') %>%
-  add_trace(p, y = ~Quiz1, name = 'Quiz1') %>%
-  add_trace(p, y = ~Quiz2, name = 'Quiz2') %>%
-  add_trace(p, y = ~Quiz3, name = 'Quiz3') %>%
-  add_trace(p, y = ~Quiz4, name = 'Quiz4') %>%
-  layout(yaxis = y)
+#Central Limit Theorem 
 
-```
+#Sampling
 
-# Conclusions
-
-Add conclusions about the analysis...
+#Conclusion
+ 
