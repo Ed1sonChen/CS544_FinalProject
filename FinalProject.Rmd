@@ -1,0 +1,453 @@
+---
+title: "Analysis of School Shootings in the US 1990 - 2021"
+author: "Zhiling Chen, Yihan Zhou, Jiatong Lyu"
+date: "12/10/2021"
+output:
+  html_document:
+    fig_width: 8
+    code_folding: hide
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=4,
+                      echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+# Data Set Overview
+
+The following data set is looking at school shootings in the US from 1990 to present.This data set was retrieved from kaggle. The data includes the data, city, state, area type, school, fatalities, wounded, dupe, source and desc. Furthermore, the data set includes information regarding Census numbers on elementary school, high school and college populations through 2016.
+
+```{r}
+pah_wikp_combo <- read.csv("/Users/chenzhiling/Desktop/CS544/CS544_FinalProject/pah_wikp_combo.csv")
+summary(pah_wikp_combo)
+```
+
+Description of variables:
+
+* Date: date of incident
+* City: location of incident
+* State: location of incident
+* Area Type: urban or suburban (only in Pah dataset)
+* School: C = college, HS = high school, MS = middle school, ES = elementary school, - = unknown
+* Fatalities: # killed
+* Wounded: # wounded (only in Wikipedia dataset)
+
+# Goal of Analysis
+
+The goal of the analysis is to get a better understanding of the victims / suspects that are involved in school shootings. 
+Some questions to ask:
+
+* Why are school shootings (and death counts) increasing over time?
+* How does the risk of being killed in a school shooting compare with other risks?
+* Are some schools / cities / states at higher risk?
+* Is there a correlation between countermeasures and a decrease in fatalities?
+* What else correlates with school shooting risks? In addition to firearms and the people who wield them, is there any clear causality?
+
+# Data Prep
+
+This dataset provided us a lot of valuable information with two csv files. 
+
+The csv file named “cps_01_formatted”shows Census numbers on elementary school, high school and college populations through 2016. (2017 and 2018 are extrapolated.)The X Column shows  the number of population with specific types of schools (N is Nursery School, K is Kindergarten, E is Elementary School, H is High School and C is College). The Y column shows the yearly total population with one type of school.
+
+Another file named “pah_wikp_combo” provides the dataset of the Pah/Amaral/Hagan research on school shootings from 1990. Y column indicates the date with specific month,date and year. Date means date of total incident,City means location of incident,State means  location of incident, Area Type: urban or suburban (only in Pah dataset). For data type named School, C is college, HS is high school, MS is middle school, ES is elementary school, - = unknown. The data type named Fatalities indicate the number of killed. Wounded means wounded (only in Wikipedia dataset). Dupe shows whether this incident appears in both datasets. Note means only the "Pah '' version of the incident is marked. Source shows the source either from Pah or Wikp. Desc: text description of incident (only in Wikipedia dataset)
+
+# General Analysis of dataset on school shooting from 2015 to 2020
+
+School Shootings and violence is a continued debate in the US. The prevalence of video cameras and other recording devices has shed light on what may have gone unnoticed prior. The influence of social media has even more so brought the trends of school violence to the fore front of conversation. It is important to understand the data and facts around school shootings before any major changes can be made. The data set analyzed came with a significant number of variables, which all hold substantial meaning. Understanding the shootings in different states and different types of schools all holds valuable and useful evidence when trying to look at the school shootings in the United States. 
+
+## Map Of Most States With High Shooting Fatalities.
+
+I created a simple map to visualise the States with most shooting fatalities:
+
+```{r}
+library(readr)
+library(lubridate)
+library(tidyverse)
+library(tseries) 
+library(forecast) 
+library(xts)
+library(astsa)
+library(DT)
+df <- pah_wikp_combo
+theme.map <- theme(
+  text = element_text(family = 'Helvetica Neue', color = "black")
+  ,panel.background = element_rect(fill = "#E5D8BD")
+  ,plot.background = element_rect(fill = "#E5D8BD")
+  ,legend.background = element_rect(fill = "#E5D8BD")
+  ,panel.grid = element_blank()
+  ,plot.title = element_text(size = 15, face = 'bold')
+  ,plot.subtitle = element_text(size = 10)
+  ,legend.key = element_blank()
+  ,axis.text = element_blank()
+  ,axis.ticks = element_blank()
+  ,axis.title = element_blank()
+)
+library(maps)
+smap <- map_data("state")
+state_shoot <- df %>% group_by(State, Fatalities) %>% count() %>% arrange(desc(Fatalities)) 
+state_shoot <- as.data.frame(state_shoot)
+foo <- inner_join(smap, state_shoot %>% mutate(State=tolower(State)), by=c("region"="State"))
+
+state_plot <- function(x) {
+  foo$x <- foo[,x]
+ggplot(data=smap, mapping = aes(x = long, y= lat , group = group), na.rm=TRUE) + geom_polygon(data = foo , aes(fill = x), color = "grey", size = 0.05) + labs(fill = x) + scale_fill_gradientn(colors = c("white" ,"#FDAE61" ,"#F46D43", "#D53E4F") , values = scales::rescale(c(5, 10, 15,20,40))) + theme.map
+}
+```
+
+```{r, fig.width=8}
+state_plot("Fatalities") + labs(title = "US School Shootings 1990 - present", subtitle="The States of Virginia, Connecticut, Florida and Colorado recorded highest student and school staff fatalities",caption="Source:https://www.kaggle.com/ecodan/school-shootings-us-1990present", fill = str_c('Fatalities'))
+```
+
+A quick historical review over the years on known shooting incidents with highest fatalities:
+
+* The Columbine High School massacre incident took place at State of Colorado.
+* The Virginia Tech shooting incident took place at State of Virginia.
+* The Sandy Hook Elementary School shooting took place at State of Connecticut.
+* Recently, Marjory Stoneman Douglas High School shooting took place at State of Florida.
+
+## School shooting by city
+
+```{r}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(usmap) 
+library(plotly)
+library(forcats)
+library(lubridate)
+pah_wikp_combo <- read.csv("/Users/chenzhiling/Desktop/CS544/CS544_FinalProject/pah_wikp_combo.csv")
+pah_wikp_combo$Date <- as.Date(pah_wikp_combo$Date, format = "%d/%m/%Y")
+pah_wikp_combo_rm = pah_wikp_combo %>% filter(is.na(pah_wikp_combo$Dupe))
+sc <- pah_wikp_combo_rm %>% group_by(City) %>% summarize( n=n()) %>% arrange(desc(n)) 
+sc %>% head(20)%>%
+  mutate(City = fct_reorder(City, n)) %>%
+  ggplot( aes(x=City, y=n)) +
+  geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4) +
+  coord_flip() +
+  ylab("shooting case") +
+  theme_bw() +ggtitle("Top 20 School Shooting by City")
+```
+
+We can see from the Bar plot above that Chicago has the most school shootings of 13 cases on record during the period of 1990 – 2021 YTD, where Los Angles and Detroit both 11 cases, and Houston had 10. Since there are too many cities in the database, we can focus on School shootings by State as well.
+
+## School shooting by state
+
+```{r}
+ssbyState <- pah_wikp_combo_rm %>% group_by(State) %>% summarize( n=n())%>% arrange(desc(n))
+ssbyState %>% arrange(desc(n)) %>% head(20) %>%
+  mutate(State = fct_reorder(State, n)) %>%
+  ggplot( aes(x=State, y=n)) +
+  geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4) +
+  coord_flip() +
+  ylab("shooting cases") +
+  theme_bw() +ggtitle("Top 20 School Shooting By States")
+```
+
+During the period of 1990 – 2021 YTD, there are a total of 76 cases of shoot shootings reported in the states of California, followed by 48 cases in Texas and 37 cases in Florida. We observe a big gap in school shooting cases between California with the rest of the states.
+
+## School shooting by school type
+
+```{r}
+  ssbyType <- pah_wikp_combo_rm %>% group_by(School) %>% summarize( n=n())%>% arrange(desc(n))
+  ssbyType %>% arrange(desc(n)) %>% head(20)%>%
+  mutate(School = fct_reorder(School, n)) %>%
+    ggplot( aes(x=School, y=n)) +
+    geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4) +
+    #coord_flip() +
+    xlab("") +
+    theme_bw() +ggtitle("School Shooting by School Type")
+
+```
+
+In the period of 1990 – 2021 YTD, most school shooting cases happened in High School, followed by college, and then Middle school, lastly elementary school. There was a total of 330 School shootings cases happened in High school, more than the sum of all school shootings occurred in other school types.
+
+```{r}
+  ssbyTypeDate <- data.frame(pah_wikp_combo_rm$Date,pah_wikp_combo_rm$School)
+  ssbyTypeDate %>% mutate(month = format(pah_wikp_combo_rm.Date, "%m"), year = format(pah_wikp_combo_rm.Date, "%Y")) %>% group_by(month, year) %>% filter(!is.na(pah_wikp_combo_rm.Date)) %>% group_by(year,pah_wikp_combo_rm.School) %>% 
+    summarize(n=n()) %>% 
+    ggplot(mapping = aes(x=year,y=n,fill = pah_wikp_combo_rm.School)) +
+    geom_bar(stat="identity", alpha=.6, width=.4) +
+    ylab("") +
+    theme_bw() +ggtitle("School Shootings by School Type Stacked Bar")+scale_fill_discrete(name = "School Type")+theme(axis.text.x=element_text(angle = 90, colour = "black"))
+```
+
+More Specifically, we can add date trend and visualize it using a stacked bar, where the fill for each stack would the school type. We observed that from 1990 to 2008, most school shootings happened in high school, from 2008 – 2015, there are more school shootings happened in college. There were 3 peak years with the most school shooting, which they are 1993 with 18 school shooting cases, 2009 with 17 cases, and 2014 with 16 cases.
+
+## School shooting by Fatalities
+
+```{r}
+  ssbyTypeDate2 <- data.frame(pah_wikp_combo_rm$Date,pah_wikp_combo_rm$Fatalities)
+  ssbyTypeDate2 %>% mutate(month = format(pah_wikp_combo_rm.Date, "%m"), year = format(pah_wikp_combo_rm.Date, "%Y")) %>% group_by(month, year) %>% filter(!is.na(pah_wikp_combo_rm.Date)) %>% 
+    summarize(n=n()) %>%
+    ggplot(mapping = aes(x=year,y=n)) +
+    geom_bar(stat="identity", alpha=.6, width=.4) +
+    xlab("") +
+    theme_bw() +ggtitle("2015 - 2020 2Q  School Shooting by Fatalities")+ theme(axis.text.x=element_text(angle = 90, colour = "black"))
+```
+
+The School Shooting by fatalities graph reconcile with the School Shooting by cases by school type, the year with the most fatalities in school shooting, is 1993 with 18 cases and 17 fatalities, 2009 and 2014 has less fatalities comparing to the cases happened. 2006 and 2015 had more fatalities with less shooting cases, which suggests that average fatalities of each shooting cases is more in these two years comparing to all other years.
+
+## School shooting by areatype
+
+```{r}
+  ssbyType <- pah_wikp_combo_rm %>% group_by(AreaType) %>% summarize( n=n())%>% arrange(desc(n))
+  ssbyType %>% arrange(desc(n)) %>% 
+    mutate(AreaType = fct_reorder(AreaType, n)) %>% 
+    ggplot( aes(x=AreaType, y=n)) +
+    geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4) +
+    #coord_flip() +
+    xlab("") +
+    theme_bw() +ggtitle("School Shooting by Area Type")
+  ssbyTypeDate3 <- data.frame(pah_wikp_combo_rm$Date,pah_wikp_combo_rm$AreaType)
+  ssbyTypeDate3 %>% mutate(month = format(pah_wikp_combo_rm.Date, "%m"), year = format(pah_wikp_combo_rm.Date, "%Y")) %>% filter(!is.na(pah_wikp_combo_rm.Date) & pah_wikp_combo_rm$AreaType!="") %>% group_by(month, year)  %>% group_by(year,pah_wikp_combo_rm.AreaType) %>% 
+    summarize(n=n()) %>% 
+    ggplot(mapping = aes(x=year,y=n,fill = pah_wikp_combo_rm.AreaType)) +
+    geom_bar(stat="identity", alpha=.6, width=.4) +
+    xlab("") +
+    theme_bw() +ggtitle("School Shooting by Area Type Stacked Bar") +   theme(axis.text.x=element_text(angle = 90, colour = "black"))
+```
+
+We have a lot of null values for Area Type column. However, with the available data above, we are still able to see that most shooting cases took place in urban areas and less took place in rural areas.
+
+# Distribution of Data
+
+## Distribution of Yearly Shootings
+
+Annual school shootings were already observed. This shows a large picture of what occurs each year. This might show a more realistic view as to what is going on. One of the first question asked is what is the yearly school shooting statistics. This information was not provided in the initial data frame. 
+
+```{r}
+year <- format(as.Date(pah_wikp_combo$Date, format = "%m/%d/%Y"), "%Y")
+df <- as.data.frame(table(year))
+colnames(df) <- c("year", "number")
+p <- ggplot(df, aes(x = year, y = number, group = 1)) +geom_line() +geom_point(size = 4, shape = 21,fill = "orange", color="orange")
+p + labs(
+    title = "Yearly Schhol Schootings",
+    x = "Year",
+    y = "Number of School Shootings"
+  ) + theme(axis.text.x=element_text(angle = 90, colour = "black"))
+```
+
+## School Schootings by Year and Month
+
+```{r}
+df <- read.csv("/Users/chenzhiling/Desktop/CS544/CS544_FinalProject/pah_wikp_combo.csv")
+df <- df %>% mutate(new_date = mdy(Date))
+df <- df %>% mutate(day = factor(day(new_date)),
+                    month = factor(month(new_date)),
+                    year = factor(year(new_date)),
+                    wday = factor(wday(new_date))
+)
+df$month <- factor(df$month,
+                  labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep","Oct", "Nov", "Dec"))
+df$wday <- factor(df$wday,
+                  labels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))
+
+df %>%
+group_by(year, month) %>%
+dplyr::summarize(Total = n()) %>%
+ggplot(aes(year, Total, fill = month)) + 
+            geom_bar( stat = "identity") +
+                  ggtitle("US School Shootings By Year and Month") +
+                    #scale_y_continuous(labels = comma) +
+                    scale_fill_brewer(palette =  "Set3") + theme_light() + theme(axis.text.x = element_text(angle = 50, size = 10, vjust = 0.4, face = "bold"), plot.title = element_text(size = 16, face = "bold", vjust = 2)) 
+```
+
+We find:
+
+* During 2013 and 2014, many shootings had occured during the 1st month of the year(January).
+* We can also see that many shootings occured during the 1st and 2nd month of the year starting from 2008 until 2014.
+
+## School Shootings by Year and Weekdays
+
+```{r}
+df %>%
+group_by(year, wday) %>%
+dplyr::summarize(Total = n()) %>%
+ggplot(aes(year, Total, fill = wday)) + 
+            geom_bar( stat = "identity") +
+                  ggtitle("US School Shootings By Year and Weekday") +
+                    #scale_y_continuous(labels = comma) +
+                    scale_fill_brewer(palette =  "Spectral") + theme_light() + theme(axis.text.x = element_text(angle = 50, size = 10, vjust = 0.4, face = "bold"), plot.title = element_text(size = 16, face = "bold", vjust = 2)) 
+```
+
+We find:
+
+* Most of the shooting incidents occured during the weekdays starting from the 4th day until the 6th day of the week (Thursday until Saturday), with many incidents happening during Fridays and Saturdays.
+
+
+## Distribution by Cities and School Types
+
+```{r}
+df <- read.csv("/Users/chenzhiling/Desktop/CS544/CS544_FinalProject/pah_wikp_combo.csv")
+
+top10_city <- df %>% group_by(City) %>% summarise(Total = n()) %>% arrange(desc(Total)) %>% head(10)
+top10_city_df <- subset(df, City %in% top10_city$City)
+
+top10_city_df$City <- factor(top10_city_df$City)
+
+ggplot(top10_city_df, aes(reorder(City, -table(top10_city_df$City)[City]), fill = School )) + geom_bar() + ylab("Shooting incidents") + ggtitle("Top Cities With Shooting Incidents") +xlab("") +theme_light() +theme(axis.text.x = element_text(angle = 50, size = 10, vjust = 0.4, face = "bold"), plot.title = element_text(size = 16, face = "bold", vjust = 2))
+```
+
+We find:
+
+* Majority of shootings occured at HS / High Schools followed by “C” / College campuses.
+
+## Distribution by Cities and Areatypes
+
+```{r}
+top10_city_df %>% filter(AreaType!="NA") %>% ggplot(aes(reorder(City, -table(top10_city_df$City)[City]), fill = AreaType )) + geom_bar() + ylab("Shooting incidents") + ggtitle("Number of Shootings") +xlab("") +theme_light() +theme(axis.text.x = element_text(angle = 50, size = 10, vjust = 0.4, face = "bold"), plot.title = element_text(size = 16, face = "bold", vjust = 2))
+```
+
+We find:
+
+* Most shootings occured at urban areas, not surprising anyway.
+
+# Central Limit Theorem 
+
+The Central Limit Theorem states that the distribution of the sample means for a given sample size of the population has the shape of the normal distribution. The theorem is shown with various distributions of the input data in the following sections. In other words, as the sample size gets larger, the means of the samples become a normal distribution. This was tested against the different years' distributions of the total enrolled school population. Below is a figure showing the distributions of 1000 random samples of sample sizes of 10, 20, 30, and 40. 
+
+```{r}
+library(prob)
+library(sampling)
+library(ggplot2)
+
+data1 <- read.csv("/Users/chenzhiling/Desktop/CS544/CS544_FinalProject/pah_wikp_combo.csv")
+
+data2 <- read.csv("/Users/chenzhiling/Desktop/CS544/CS544_FinalProject/cps_01_formatted.csv")
+
+x <- data2$Total.enrolled
+
+cat("Population mean:", mean(x), "Standard Deviation:", sd(x))
+
+steps <- seq(30000, 80000,10000)
+par(mfrow = c(1,1))
+hist(x, breaks=steps, las=2, xaxt="n", ylim=c(0,30), col="green")
+axis(side = 1, at = steps, labels = T, las =2)
+
+samples <- 1000
+xbar <- numeric(samples)
+
+par(mfrow = c(2,2))
+
+for (size in c(10, 20, 30, 40)) {
+  for (i in 1:samples) {
+    xbar[i] <- mean(sample(x, size = size, replace = FALSE))
+  }
+  
+  h <- hist(xbar, prob = FALSE, ylim=c(0, 300), xlim=c(50000,80000), 
+            main = paste("Sample Size =", size))
+  
+  cat("Sample Size = ", size, " Mean = ", mean(xbar),
+      " SD = ", sd(xbar), "\n")
+}
+```
+
+# Sampling
+
+Sampling is used to identify and analyze any trends or patterns that can be seen in a subset of a larger group of data. It can also be a useful technique to help predict some type of data or information. There are many different types of sampling that can be applied to data. The sampling methods used for this analysis are simple random sampling without replacement, systematic, and stratified. The sampling was specifically looking at the type of the schoools in the school shooting accident. Simple random sampling is when a specified sample is selected from the larger group or larger frame. Each person or object has an equivalent opportunity of getting selected. The sample size of 50 is being used. Out of the population of 700, there will be 50 randomly selected without replacement. Another technique that was used to sample the data was stratified sampling. Stratified sampling is when the larger group of data is broken into smaller groups and then certain sizes are picked from each group. In this analysis, the school types are broken into each group and random types are selected from each group. The final technique of sampling used for the analysis is systematic sampling. Systematic sampling is when there are “rules” decided to pick the sample size. There is a potential bias with this type of sampling. For each one of these sampling techniques, a sample size of 50 was used.
+
+```{r}
+row.names(data1) <- 1:nrow(data1)
+school <- names(sort(table(data1$School),  decreasing = TRUE)[1:5])
+data_top5 <- subset(data1, School %in% school)
+row.names(data_top5) <- 1:nrow(data_top5)
+cat("Frequency of school type")
+table(data_top5$School)
+cat("Percentage of school type")
+round(table(data_top5$School)/nrow(data_top5), 2)
+
+#Population
+barplot(table(data_top5$School), main=paste("population"), col="blue")
+
+#SRSWOR
+sample.size <- 50
+set.seed(8255)
+s <- srswor(sample.size, nrow(data_top5))
+sample.1 <- data_top5[s != 0, ]
+cat("Frequency of school type")
+table(sample.1$School)
+cat("Percentage of school type")
+round(table(sample.1$School)/sample.size, 2)
+
+barplot(table(sample.1$School), main=paste("SRSWOR"), col="red")
+
+#Systematic 
+set.seed(8255)
+N <- nrow(data_top5)
+n <- sample.size
+k <- ceiling(N / n)
+r <- sample(k, 1)
+s <- seq(r, by = k, length = n)
+sample.2 <- data_top5[s, ]
+cat("Frequency of school type")
+table(sample.2$School)
+cat("Percentage of school type")
+round(table(sample.2$School)/sample.size, 2)
+
+barplot(table(sample.2$School), main=paste("Systematic"), col="green")
+
+
+#stratified Sampling by School type
+set.seed(8255)
+order.index <- order(data_top5$School)
+data <- data_top5[order.index, ]
+freq <- table(data_top5$School)
+sizes <- round(sample.size * freq / sum(freq))
+st <- strata(data, stratanames = c("School"),
+             size = sizes, method = "srswor")
+sample.4 <- getdata(data, st)
+cat("Frequency of school type")
+table(sample.4$School)
+cat("Percentage of school type")
+round(table(sample.4$School)/sample.size, 2)
+
+barplot(table(sample.4$School), main=paste("stratified Sampling by School type"), col="cyan")
+
+
+###Sampling 
+par(mfrow = c(2,2))
+barplot(table(data_top5$School), main=paste("population"), col="blue")
+barplot(table(sample.1$School), main=paste("SRSWOR"), col="red")
+barplot(table(sample.2$School), main=paste("Systematic"), col="green")
+barplot(table(sample.4$School), main=paste("stratified Sampling by School type"), col="cyan")
+
+
+cat("Population: Unknown 2% of the school type.  SRSWOR: Unknown 0% of the school type")
+cat("Population: College 21% of the school type.  SRSWOR: College 30% of the school type")
+cat("Population: Elementary School 7% of the school type.  SRSWOR: Elementary School 6% of the school type")
+cat("Population: High School 57% of the school type.  SRSWOR: High School 52% of the school type")
+cat("Population: Middle School 13% of the school type.  SRSWOR: Middle School 12% of the school type")
+
+cat("Population: Unknown 2% of the school type.  Systematic Sample: Unknown 0% of the school type")
+cat("Population: College 21% of the school type.  Systematic Sample: College 12% of the school type")
+cat("Population: Elementary School 7% of the school type.  Systematic Sample: Elementary School 14% of the school type")
+cat("Population: High School 57% of the school type.  Systematic Sample: High School 52% of the school type")
+cat("Population: Middle School 13% of the school type.  Systematic Sample: Middle School 22% of the school type")
+
+cat("Population: Unknown 2% of the school type. Stratified Sample: Unknown 2% of the school type")
+cat("Population: College 21% of the school type.  Stratified Sample: College 20% of the school type")
+cat("Population: Elementary School 7% of the school type.  Stratified Sample: Elementary School 8% of the school type")
+cat("Population: High School 57% of the school type.  Stratified Sample: High School 58% of the school type")
+cat("Population: Middle School 13% of the school type.  Stratified Sample: Middle School 12% of the school type")
+```
+
+Overall, the sampling shows similarity to the population. Random  select sampling without replacement is a little bit of the model. As we can see, shooting accidents happen most in high school and least at elementary school.  It makes sense to us since when we heard about shooting accidents in school, most time it happens in high school. 
+
+# Conclusion
+ 
+Noting our previous observations from notable shooting incidents with highest fatalities:
+
+* The Columbine High School massacre incident took place at State of Colorado.
+* The Virginia Tech shooting incident took place at State of Virginia.
+* The Sandy Hook Elementary School shooting took place at State of Connecticut.
+
+We can see that most of the shooting incidents took place on “HS” highschool campuses. Basing on our data at hand, most highschool students are at risk of possibility of shooting incidents.
+
+* Most of the shootings occured as the week approaches to weekend.
+* Most of the shootings occured from January until April then goes down during summer season(no classes).
+* Then substantially, goes up during start of classes until December.
+* While it is very difficult to check if there are any patterns, regardless, the shooting fatalities are growing after each shooting tragedy.
